@@ -1,22 +1,22 @@
-{- based on intro to parsing -}
-
 import System.Environment
-{- import Text.Parsec (ParseError, errorPos, sourceName, sourceLine, sourceColumn
--- import Text.Parsec.String -}
 import Language.SQL.SimpleSQL.Parser
 import Data.List
 
 main :: IO ()
-main = let qexp = parseQueryExprs "" Nothing "select 1; select 2"
-       in putStr $ show qexp
+main = do a <- getArgs
+          case a of
+            [str] -> do f <- readFile str
+                        putStrLn $ show $ parseQueryExprs str Nothing f
+            _ -> error "needed: input file name"
 
--- main = do
---     a <- getArgs
---     case a of
---       [str] -parseFromFile myParser str
---                >>= either (putStrLn . showError)
---                           (putStrLn . intercalate "\n" . map P.prettyQueryExpr)
---       _ -error "please pass one argument with the file containing the queries to parse"
+--           >>= either (putStrLn . showError)
+--         (putStrLn . intercalate "\n" . map P.prettyQueryExpr)
+--         _ -error "please pass one argument with the file containing the queries to parse"
+
+
+-- foo = let qexp = parseQueryExprs "" Nothing "select 1; select 2"
+--       in putStr $ show qexp
+
 
 -- myParser :: Parser [QueryExpr]
 -- myParser = whitespace
