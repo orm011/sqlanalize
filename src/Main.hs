@@ -11,20 +11,26 @@ main :: IO ()
 main = do a <- getArgs
           case a of
             [str] -> do f <- readFile str
-                        let parsed  = partitionEithers $ map (parseQueryExpr str Nothing)  $ lines f
-                            num_errors = length $ fst  parsed
-                            total_lines = (length $ snd parsed) + num_errors
-                            good_ones = snd $ parsed
-                            idens = map get_all_idens good_ones
-                            rows = transpose [ map prettyQueryExpr good_ones
-                                              , map show idens
-                                              , map groom good_ones]
-                            disp [x,y,z] = putStrLn x >> putStrLn "" >>
-                                           putStrLn y >> putStrLn "" >>
-                                           putStrLn z >> putStrLn "---------"
-                            actions = (map disp rows) ++ [putStrLn $ "parse errors / total queries  = " ++ show num_errors ++ " / " ++ show total_lines ]
-                            in sequence_ actions
+                        process_lines str $ lines f
             _ -> error "we need an input file name"
+
+process_lines :: String -> [String] -> IO ()
+process_lines str lns =
+  let parsed  = partitionEithers $ map (parseQueryExpr str Nothing)  lns
+      num_errors = length $ fst  parsed
+      total_lines = (length $ snd parsed) + num_errors
+      good_ones = snd $ parsed
+      idens = map get_all_idens good_ones
+      rows = transpose [ map prettyQueryExpr good_ones
+                       , map show idens
+                       , map groom good_ones]
+      disp [x,y,z] = putStrLn x >> putStrLn "" >>
+        putStrLn y >> putStrLn "" >>
+        putStrLn z >> putStrLn "---------"
+      msg = "parse errors / total queries  = " ++
+        show num_errors ++ " / " ++ show total_lines
+      actions = (map disp rows) ++ [putStrLn $ msg]
+  in sequence_ actions
 
 extract_name (Name x) = x
 {- finds the identifiers used within an expression, possibly deep within -}
@@ -39,5 +45,6 @@ get_idens (Parens x) = get_idens x
 get_idens _ = []
 
 get_all_idens :: QueryExpr -> [String]
-get_all_idens Select { qeSelectList, qeWhere  } = concat $ (map (get_idens . fst) qeSelectList) ++ (map get_idens (maybeToList qeWhere))
+get_all_idens Select { qeSelectList, qeWhere  } =
+  concat $ (map (get_idens . fst) qeSelectList) ++ (map get_idens (maybeToList qeWhere))
 get_all_idens  _ = []
