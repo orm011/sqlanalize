@@ -6,12 +6,13 @@ main :: IO ()
 main = do a <- getArgs
           case a of
             [str] -> do f <- readFile str
-                        putStrLn $ show $ parseQueryExprs str Nothing f
-            _ -> error "needed: input file name"
+                        sequence_ (map (putStrLn . show . parseQueryExpr str Nothing)  $ lines f)
+            _ -> error "we need an input file name"
 
---           >>= either (putStrLn . showError)
---         (putStrLn . intercalate "\n" . map P.prettyQueryExpr)
---         _ -error "please pass one argument with the file containing the queries to parse"
+ -- $ show $ parseQueryExpr str Nothing
+ --          >>= either (putStrLn . showError)
+ --        (putStrLn . intercalate "\n" . map P.prettyQueryExpr)
+ --        _ -error "please pass one argument with the file containing the queries to parse"
 
 
 -- foo = let qexp = parseQueryExprs "" Nothing "select 1; select 2"
