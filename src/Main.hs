@@ -32,7 +32,14 @@ mainloop str handle lineno errno  =
                           (delta_err, action) = case o of
                             Left _1 -> (1, printErr _1)
                             Right _1 -> (0, printParsed _1)
-                      in (putStrLn (show query) >> putStrLn "" >> action >>  putStrLn "---------"  >> mainloop str handle (lineno+1) (errno+delta_err)))))
+                      in (putStrLn (show query)
+                          >> putStrLn ""
+                          >> action
+                          >> putStrLn "---------"
+                          >> mainloop str handle (lineno+1) (errno+delta_err))
+                    )
+               )
+  )
 
 -- remove_limit :: String -> String
 -- remove_limit query =
