@@ -44,7 +44,7 @@ mainloop :: String -> Handle -> Stats -> IO ()
 mainloop filename handle stats@(Stats { stats_total, stats_parsed, stats_simple, stats_column_histogram })  =
   hIsEOF handle >>=
   (\iseof -> if iseof
-         then putStrLn (show stats) >> putStrLn ("parse errors / total queries  = " ++ show (stats_total - stats_parsed)  ++ " / " ++ show stats_total )
+         then putStrLn ("parse errors / total queries  = " ++ show (stats_total - stats_parsed)  ++ " / " ++ show stats_total )
          else  (hGetLine handle
                 >>= (\query ->
                       let (msg, newstats) =
@@ -59,6 +59,7 @@ mainloop filename handle stats@(Stats { stats_total, stats_parsed, stats_simple,
                       in (putStrLn (show query)
                           >> putStrLn ""
                           >> putStrLn msg
+                          >> putStrLn (groom stats)
                           >> putStrLn "---------"
                           >> mainloop filename handle newstats)
                     )
