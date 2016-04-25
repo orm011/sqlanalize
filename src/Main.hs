@@ -4,11 +4,10 @@ import Language.SQL.SimpleSQL.Lex
 import Language.SQL.SimpleSQL.Syntax
 import Language.SQL.SimpleSQL.Pretty
 import Language.SQL.SimpleSQL.Dialect
-import Data.List
-import Data.Maybe
-import Data.Either
+import Data.List()
+import Data.Maybe()
+import Data.Either()
 import Text.Groom
-import Text.Regex.Posix
 import Debug.Trace
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
