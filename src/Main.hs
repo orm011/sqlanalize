@@ -19,6 +19,7 @@ import Language.Sexp
 import qualified Data.ByteString.Lazy.Char8 as S8
 import qualified Data.ByteString.Lazy as S
 
+
 (|>) :: a -> (a -> b) -> b
 (|>) f g = g f
 
@@ -118,6 +119,29 @@ get_iden_list foo =
 
 distinct_columns_accessed :: [String] -> Int
 distinct_columns_accessed lst  = (Set.fromList lst) |> Set.size
+
+{- clusters queries by those that have the same shape, ie, equal except bc of
+literal constants in them.
+These probably match templates used by the client code
+-}
+get_canonical_query_sexpr :: Sexp -> Sexp
+get_canonical_query_sexpr s@(List [Atom packed, second])
+  | (kind == "NumLit") = List [Atom packed, canonical_int]
+  | (kind == "StringLit") = List [Atom packed, canonical_str]
+  | (kind == "IntervalLit") = undefined {- leave for later -}
+  | (kind == "TypedLit") = undefined {- leave for later -}
+  | otherwise = List [Atom packed, get_canonical_query_sexpr second]
+  where kind = S8.unpack packed
+        canonical_int = Atom (S8.pack "0")
+        canonical_str = List [Atom (S8.pack "'"),
+                              Atom (S8.pack "'"),
+                              Atom (S8.pack "canonicalstring")]
+
+get_canonical_query_sexpr s@(Atom x) = s
+get_canonical_query_sexpr (List lst) =
+  List (map get_canonical_query_sexpr lst)
+
+
 
 {-
 note:
