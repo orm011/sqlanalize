@@ -68,15 +68,16 @@ mainloop filename handle stats@(Stats { stats_total
                               Left ParseError { peFormattedError }
                                 -> (peFormattedError, stats_updated_count, query_tally, False )
                               Right _1
-                                -> let stats_updated_parsed =
-                                         stats_updated_count { stats_parsed = stats_parsed+1 }
-                                       newtally  = merge_into_count query_tally _1 in
-                                if not (is_simple_scan _1)
-                                then (groom _1, stats_updated_parsed, newtally, True )
-                                else let cols =  distinct_columns_accessed $ get_all_idens _1
-                                     in (groom _1, stats_updated_parsed
-                                         { stats_simple = stats_simple + 1
-                                         , stats_column_histogram = incr stats_column_histogram cols }, newtally , True)
+                                -> let   cols =  distinct_columns_accessed $ get_all_idens _1
+                                         stats_updated_parsed =
+                                           stats_updated_count
+                                           { stats_parsed = stats_parsed+1
+                                           , stats_column_histogram = incr stats_column_histogram cols}
+                                         newtally  = merge_into_count query_tally _1 in
+                                   if not (is_simple_scan _1)
+                                   then (groom _1, stats_updated_parsed, newtally, True )
+                                   else (groom _1, stats_updated_parsed
+                                         { stats_simple = stats_simple + 1}, newtally , True)
                       in (putStrLn (show query)
                           >> putStrLn ""
                           >> (if success then putStrLn "Success." else putStrLn msg)
@@ -118,7 +119,7 @@ get_all_idens_sexpr (List lst) =
 
 get_iden_list :: Sexp -> String
 get_iden_list foo =
-    let get_str (Name Nothing str) = str in
+    let get_str (Name _ str) = str in
     case (fromSexp :: (Sexp -> Maybe [Name])) foo of
       Just namelist -> map get_str namelist |> foldl (\x y -> x ++"."++ y) "" |> tail
 
@@ -195,4 +196,6 @@ is_simple_scan Select {
   , qeOffset = Nothing
   , qeFetchFirst = Nothing
   } = True
+
+
 is_simple_scan _ = False
