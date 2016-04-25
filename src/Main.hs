@@ -47,21 +47,31 @@ initial_stats = Stats
 incr hist cols =  Map.insertWith (+) cols 1 hist
 
 mainloop :: String -> Handle -> Stats -> IO ()
-mainloop filename handle stats@(Stats { stats_total, stats_parsed, stats_simple, stats_column_histogram })  =
+mainloop filename handle stats@(Stats { stats_total
+                                      , stats_parsed
+                                      , stats_simple
+                                      , stats_column_histogram })  =
   hIsEOF handle >>=
   (\iseof -> if iseof
-         then putStrLn ("parse errors / total queries  = " ++ show (stats_total - stats_parsed)  ++ " / " ++ show stats_total )
+         then putStrLn ("parse errors / total queries  = " ++
+                        show (stats_total - stats_parsed)  ++
+                        " / " ++ show stats_total )
          else  (hGetLine handle
                 >>= (\query ->
                       let (msg, newstats) =
                             let stats_updated_count =  stats { stats_total = stats_total + 1}
                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
-                              Left ParseError { peFormattedError } -> (peFormattedError, stats_updated_count )
-                              Right _1 -> let stats_updated_parsed = stats_updated_count { stats_parsed = stats_parsed+1 }
-                                          in if not (is_simple_scan _1) then (groom _1, stats_updated_parsed )
-                                             else let cols =  distinct_columns_accessed $ get_all_idens _1
-                                                  in (groom _1, stats_updated_parsed { stats_simple = stats_simple + 1
-                                                                                     , stats_column_histogram = incr stats_column_histogram cols } )
+                              Left ParseError { peFormattedError }
+                                -> (peFormattedError, stats_updated_count )
+                              Right _1
+                                -> let stats_updated_parsed =
+                                         stats_updated_count { stats_parsed = stats_parsed+1 } in
+                                if not (is_simple_scan _1)
+                                then (groom _1, stats_updated_parsed )
+                                else let cols =  distinct_columns_accessed $ get_all_idens _1
+                                     in (groom _1, stats_updated_parsed
+                                         { stats_simple = stats_simple + 1
+                                         , stats_column_histogram = incr stats_column_histogram cols } )
                       in (putStrLn (show query)
                           >> putStrLn ""
                           >> putStrLn msg
