@@ -15,7 +15,6 @@ executable sqlanalyze
   main-is:             Main.hs
   build-depends:       base >=4.7 && <4.8
                      , groom==0.1.2
-                     , regex-posix==0.95.2
                      , simple-sql-parser==0.5.0
                      , containers>=0.5.7
                      , sexp==0.7
