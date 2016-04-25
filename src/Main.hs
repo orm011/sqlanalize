@@ -59,6 +59,7 @@ mainloop filename handle stats@(Stats { stats_total
          then putStrLn ("parse errors / total queries  = " ++
                         show (stats_total - stats_parsed)  ++
                         " / " ++ show stats_total )
+              >> display_cluster_tally query_tally
          else  (hGetLine handle
                 >>= (\query ->
                       let (msg, newstats, newtally, success) =
@@ -80,8 +81,7 @@ mainloop filename handle stats@(Stats { stats_total
                           >> putStrLn ""
                           >> putStrLn msg
                           >> putStrLn (groom newstats)
-                          >> (if success then display_cluster_tally newtally else putStrLn "")
-                          >> putStrLn ("number of unique queries: " ++ show (HashMap.size newtally))
+                          >> (if success && (stats_parsed +1) `mod` 10000 == 0 then display_cluster_tally newtally else putStrLn "")
                           >> putStrLn "---------"
                           >> mainloop filename handle newstats newtally)
                     )
@@ -170,11 +170,12 @@ merge_into_count map query = HashMap.insertWith (+) (normalize_query query) 1 ma
 
 display_cluster_tally :: HashMap.Map S.ByteString Int -> IO ()
 display_cluster_tally m = {-note, it should be a one element list after parsing back -}
-  m
+  (m
   |> HashMap.toList
   |> List.sortBy (\x y -> compare (snd x)  (snd y))
   |> map (\(x, y) -> putStr (S8.unpack x) >> putStr " -> " >> putStrLn (show y) >> putStrLn "---")
-  |> sequence_
+  |> sequence_)
+  >> putStrLn ("number of unique queries: " ++ show (HashMap.size m))
 
 {-
 note:
