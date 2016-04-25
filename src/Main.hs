@@ -4,12 +4,13 @@ import Language.SQL.SimpleSQL.Lex
 import Language.SQL.SimpleSQL.Syntax
 import Language.SQL.SimpleSQL.Pretty
 import Language.SQL.SimpleSQL.Dialect
-import Data.List()
-import Data.Maybe()
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
 import Data.Either()
 import Text.Groom
 import Debug.Trace
 import qualified Data.Map.Strict as Map
+import qualified Data.HashMap as HashMap
 import qualified Data.Set as Set
 import System.IO
 import Data.Sexp
@@ -18,7 +19,6 @@ import Data.String.Conversions
 import Language.Sexp
 import qualified Data.ByteString.Lazy.Char8 as S8
 import qualified Data.ByteString.Lazy as S
-
 
 (|>) :: a -> (a -> b) -> b
 (|>) f g = g f
@@ -36,13 +36,16 @@ data Stats = Stats
   , stats_parsed::Int
   , stats_simple::Int
   , stats_column_histogram::Map.Map Int Int
-  } deriving Show
+  , query_tally::HashMap.Map S.ByteString Int
+  } deriving (Show)
+
 
 initial_stats = Stats
   { stats_total = 0
   , stats_parsed = 0
   , stats_simple = 0
   , stats_column_histogram = Map.empty
+  , query_tally = HashMap.empty
   }
 
 incr hist cols =  Map.insertWith (+) cols 1 hist
@@ -51,7 +54,8 @@ mainloop :: String -> Handle -> Stats -> IO ()
 mainloop filename handle stats@(Stats { stats_total
                                       , stats_parsed
                                       , stats_simple
-                                      , stats_column_histogram })  =
+                                      , stats_column_histogram
+                                      , query_tally })  =
   hIsEOF handle >>=
   (\iseof -> if iseof
          then putStrLn ("parse errors / total queries  = " ++
@@ -66,7 +70,9 @@ mainloop filename handle stats@(Stats { stats_total
                                 -> (peFormattedError, stats_updated_count )
                               Right _1
                                 -> let stats_updated_parsed =
-                                         stats_updated_count { stats_parsed = stats_parsed+1 } in
+                                         stats_updated_count { stats_parsed = stats_parsed+1
+                                                             , query_tally = merge_into_count query_tally _1
+                                                             } in
                                 if not (is_simple_scan _1)
                                 then (groom _1, stats_updated_parsed )
                                 else let cols =  distinct_columns_accessed $ get_all_idens _1
@@ -137,11 +143,26 @@ get_canonical_query_sexpr s@(List [Atom packed, second])
                               Atom (S8.pack "'"),
                               Atom (S8.pack "canonicalstring")]
 
+{- example of typed lit :
+    List [Atom "TypedLit",List [List [Atom "PrecTypeName",List [List [List [Atom "Name",List [List [Atom "Nothing",List []],Atom "timestamp"]]],Atom "0"]],Atom "2015-02-28 23:59:59"]],
+-}
+
+
 get_canonical_query_sexpr s@(Atom x) = s
 get_canonical_query_sexpr (List lst) =
   List (map get_canonical_query_sexpr lst)
 
+merge_into_count :: HashMap.Map S.ByteString Int ->  QueryExpr -> HashMap.Map S.ByteString Int
+merge_into_count map query =
+  let stringform = toSexp query |> get_canonical_query_sexpr |> printMach  in
+  HashMap.insertWith (+) stringform 1 map
 
+display_cluster_tally :: HashMap.Map S.ByteString Int -> IO ()
+display_cluster_tally m = {-note, it should be a one element list after parsing back -}
+  let deser_query m = m |> parseExn |> head |> (fromSexp :: Sexp -> Maybe QueryExpr)
+        |> Maybe.fromJust |> prettyMySQLQuery in
+  m |> HashMap.toList |> map (\(x,y) -> (deser_query x, y))
+  |> List.sortBy (\x y -> compare (snd x)  (snd y)) |> groom |> putStrLn
 
 {-
 note:
