@@ -62,11 +62,11 @@ mainloop filename handle stats@(Stats { stats_total
               >> display_cluster_tally query_tally
          else  (hGetLine handle
                 >>= (\query ->
-                      let (msg, newstats, newtally, success) =
+                      let (msg, num_cols, newstats, newtally, success) =
                             let stats_updated_count =  stats { stats_total = stats_total + 1}
                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
                               Left ParseError { peFormattedError }
-                                -> (peFormattedError, stats_updated_count, query_tally, False )
+                                -> (peFormattedError, 0, stats_updated_count, query_tally, False )
                               Right _1
                                 -> let   cols =  distinct_columns_accessed $ get_all_idens _1
                                          stats_updated_parsed =
@@ -75,12 +75,12 @@ mainloop filename handle stats@(Stats { stats_total
                                            , stats_column_histogram = incr stats_column_histogram cols}
                                          newtally  = merge_into_count query_tally _1 in
                                    if not (is_simple_scan _1)
-                                   then (groom _1, stats_updated_parsed, newtally, True )
-                                   else (groom _1, stats_updated_parsed
+                                   then (groom _1, cols, stats_updated_parsed, newtally, True )
+                                   else (groom _1, cols, stats_updated_parsed
                                          { stats_simple = stats_simple + 1}, newtally , True)
                       in (putStrLn (show query)
                           >> putStrLn ""
-                          >> (if success then putStrLn "Success." else putStrLn msg)
+                          >> (if success then putStrLn ("Success. cols in query = " ++ show num_cols) else putStrLn msg)
                           >> putStrLn (groom newstats)
                           >> (if success && (stats_parsed +1) `mod` 10000 == 0 then display_cluster_tally newtally else putStrLn "")
                           >> putStrLn "---------"
