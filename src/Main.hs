@@ -11,7 +11,14 @@ import Text.Groom
 import Text.Regex.Posix
 import Debug.Trace
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import System.IO
+import Data.Sexp
+import GHC.Generics
+import Data.String.Conversions
+import Language.Sexp
+import qualified Data.ByteString.Lazy.Char8 as S8
+import qualified Data.ByteString.Lazy as S
 
 (|>) :: a -> (a -> b) -> b
 (|>) f g = g f
@@ -66,12 +73,6 @@ mainloop filename handle stats@(Stats { stats_total, stats_parsed, stats_simple,
                )
   )
 
--- remove_limit :: String -> String
--- remove_limit query =
---   case (query  =~ "(limit|LIMIT) ([0-9]*);" :: (String, String, String, [String])) of
---     (before, _, _, [_, num]) ->  before ++ "offset 0 fetch first " ++ num ++ " rows only;"
---     (before, "", "", [] ) -> before
-
 officialDialect =  Dialect {diSyntaxFlavour=MySQL, allowOdbc=True }
 parseMySQLQuery = parseQueryExpr officialDialect
 prettyMySQLQuery = prettyQueryExpr officialDialect
@@ -88,36 +89,35 @@ prettyParseErr file lineno query =
 prettyParse str =
   prettyParseErr "" 0 str |> snd |> putStrLn
 
-extract_name (Name _ x) = x
 {- finds the identifiers used within an expression, possibly deep within -}
-get_idens :: ScalarExpr -> [String]
-get_idens (Iden ls) = [intercalate "." (map extract_name ls)]
-get_idens Star = ["star"] {- fix later by using schema -}
-get_idens (App _ vals) = concat $ map get_idens vals
-get_idens (AggregateApp { aggArgs, aggFilter }) =
-  concat $ (map get_idens aggArgs) ++ (map get_idens (maybeToList aggFilter))
-get_idens (BinOp _1  _  _2) = get_idens _1 ++ get_idens _2
-get_idens (PrefixOp _ _1) = get_idens _1
-get_idens (Parens x) = get_idens x
-get_idens _ = []
+get_all_idens :: QueryExpr -> [String]
+get_all_idens expr@(Select{}) = (get_all_idens_sexpr . toSexp) expr
 
-data ColumnsUsed = ColumnsUsed { select_clause :: [(String, Int)]
-                               , where_clause :: [(String, Int)]
-                               } deriving Show
+get_all_idens_sexpr :: Sexp -> [String]
+get_all_idens_sexpr (List [Atom iden, _1@(List _) ])
+  | (S8.unpack iden == "Iden") = [get_iden_list _1]
+  | otherwise = get_all_idens_sexpr _1
+get_all_idens_sexpr (Atom x) = []
+get_all_idens_sexpr (List lst) =
+  map get_all_idens_sexpr lst |> foldl (++) []
 
-group_by_sum :: [String] -> [(String, Int)]
-group_by_sum = Map.toList . (foldl (\map elt -> Map.insertWith (+) elt 1 map) Map.empty)
+get_iden_list :: Sexp -> String
+get_iden_list foo =
+    let get_str (Name Nothing str) = str in
+    case (fromSexp :: (Sexp -> Maybe [Name])) foo of
+      Just namelist -> map get_str namelist |> foldl (\x y -> x ++"."++ y) "" |> tail
 
-get_all_idens :: QueryExpr -> ColumnsUsed
-get_all_idens Select { qeSelectList,  qeWhere  } =
-  ColumnsUsed { select_clause = group_by_sum $ concat $ (map (get_idens . fst) qeSelectList)
-              , where_clause = group_by_sum $ concat $ (map get_idens (maybeToList qeWhere)) }
+distinct_columns_accessed :: [String] -> Int
+distinct_columns_accessed lst  = (Set.fromList lst) |> Set.size
 
-distinct_columns_accessed :: ColumnsUsed -> Int
-distinct_columns_accessed ColumnsUsed {select_clause, where_clause} =
-  Map.fromList (select_clause ++ where_clause) |> Map.toList |> length
+{-
+note:
+simple queries right now include queries like this one:
+is_simple_scan  $ justParse "select count(distinct foo) from bar"
 
-{- select (agg) from single_table where -}
+also, we are having issues parsing queries with 'any Fooo'
+-}
+
 is_simple_scan :: QueryExpr -> Bool
 is_simple_scan Select {
   qeSetQuantifier = SQDefault
@@ -129,12 +129,3 @@ is_simple_scan Select {
   , qeFetchFirst = Nothing
   } = True
 is_simple_scan _ = False
-
-{-
-
-note:
-need to check for names that are nested within constructs not covered at the moment...
-simple queries right now include queries like this one:
-is_simple_scan  $ justParse "select count(distinct foo) from bar"
-
--}
