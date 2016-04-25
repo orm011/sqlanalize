@@ -128,24 +128,26 @@ distinct_columns_accessed lst  = (Set.fromList lst) |> Set.size
 
 {- clusters queries by those that have the same shape, ie, equal except bc of
 literal constants in them.
+
 These probably match templates used by the client code
 -}
 get_canonical_query_sexpr :: Sexp -> Sexp
-get_canonical_query_sexpr s@(List [Atom packed, second])
-  | (kind == "NumLit") = List [Atom packed, canonical_int]
-  | (kind == "StringLit") = List [Atom packed, canonical_str]
-  | (kind == "IntervalLit") = undefined {- leave for later -}
-  | (kind == "TypedLit") = undefined {- leave for later -}
-  | otherwise = List [Atom packed, get_canonical_query_sexpr second]
-  where kind = S8.unpack packed
-        canonical_int = Atom (S8.pack "0")
-        canonical_str = List [Atom (S8.pack "'"),
-                              Atom (S8.pack "'"),
-                              Atom (S8.pack "canonicalstring")]
+get_canonical_query_sexpr s@(List [Atom packed, _])
+  if elem (S8.unpack packed) ["NumLit", "StringLit", "IntervalLit", "TypedLit"]
+  then let mb = fromSexp s::Maybe ScalarExpr  in
+    (mb |> fromJust |> get_canonical_literal |> toSexp)
+  else List [Atom packed, get_canonical_query_sexpr second]
 
-{- example of typed lit :
-    List [Atom "TypedLit",List [List [Atom "PrecTypeName",List [List [List [Atom "Name",List [List [Atom "Nothing",List []],Atom "timestamp"]]],Atom "0"]],Atom "2015-02-28 23:59:59"]],
--}
+get_canonical_literal :: ScalarExpr  -> ScalarExpr
+get_canonical_literal s = case s of
+  NumLit _ -> NumLit "canonicalNumLit"
+  StringLit _ _ _ -> StringLit "'" "'" "canonicalStringLit"
+  IntervalLit { ilLiteral } ->
+    IntervalLit { ilSign=Nothing
+                , ilLiteral=ilLiteral
+                , ilFrom=(Itf "canonicalIntervalLitFrom" Nothing)
+                , ilTo=Nothing}
+  TypedLit tn _ -> TypedLit tn "canonicalTypedLit"
 
 
 get_canonical_query_sexpr s@(Atom x) = s
