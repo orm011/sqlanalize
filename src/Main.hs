@@ -106,8 +106,15 @@ prettyParse str =
   prettyParseErr "" 0 str |> snd |> putStrLn
 
 {- finds the identifiers used within an expression, possibly deep within -}
+get_aliases :: QueryExpr -> [String]
+get_aliases (Select { qeSelectList }) =
+  map (Maybe.maybeToList . snd) qeSelectList |> foldl (++) [] |> map (\(Name _ s) -> s)
+
 get_all_idens :: QueryExpr -> [String]
-get_all_idens expr@(Select{}) = (get_all_idens_sexpr . toSexp) expr
+get_all_idens expr@(Select{}) =
+  let initial = (get_all_idens_sexpr . toSexp) expr
+      aliases = Set.fromList (get_aliases expr) in
+  [i | i <- initial, not (Set.member i aliases )]
 
 get_all_idens_sexpr :: Sexp -> [String]
 get_all_idens_sexpr (List [Atom iden, _1@(List _) ])
