@@ -27,7 +27,7 @@ main :: IO ()
 main = do a <- getArgs
           case a of
             [filename] -> do handle <- openFile filename ReadMode
-                             mainloop filename handle initial_stats
+                             mainloop filename handle initial_stats HashMap.empty
                              hClose handle
             _ -> error "we need an input file name"
 
@@ -36,7 +36,6 @@ data Stats = Stats
   , stats_parsed::Int
   , stats_simple::Int
   , stats_column_histogram::Map.Map Int Int
-  , query_tally::HashMap.Map S.ByteString Int
   } deriving (Show)
 
 
@@ -45,17 +44,16 @@ initial_stats = Stats
   , stats_parsed = 0
   , stats_simple = 0
   , stats_column_histogram = Map.empty
-  , query_tally = HashMap.empty
   }
 
 incr hist cols =  Map.insertWith (+) cols 1 hist
 
-mainloop :: String -> Handle -> Stats -> IO ()
+mainloop :: String -> Handle -> Stats -> HashMap.Map S.ByteString Int -> IO ()
 mainloop filename handle stats@(Stats { stats_total
                                       , stats_parsed
                                       , stats_simple
                                       , stats_column_histogram
-                                      , query_tally })  =
+                                      }) query_tally  =
   hIsEOF handle >>=
   (\iseof -> if iseof
          then putStrLn ("parse errors / total queries  = " ++
@@ -63,28 +61,29 @@ mainloop filename handle stats@(Stats { stats_total
                         " / " ++ show stats_total )
          else  (hGetLine handle
                 >>= (\query ->
-                      let (msg, newstats) =
+                      let (msg, newstats, newtally, success) =
                             let stats_updated_count =  stats { stats_total = stats_total + 1}
                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
                               Left ParseError { peFormattedError }
-                                -> (peFormattedError, stats_updated_count )
+                                -> (peFormattedError, stats_updated_count, query_tally, False )
                               Right _1
                                 -> let stats_updated_parsed =
-                                         stats_updated_count { stats_parsed = stats_parsed+1
-                                                             , query_tally = merge_into_count query_tally _1
-                                                             } in
+                                         stats_updated_count { stats_parsed = stats_parsed+1 }
+                                       newtally  = merge_into_count query_tally _1 in
                                 if not (is_simple_scan _1)
-                                then (groom _1, stats_updated_parsed )
+                                then (groom _1, stats_updated_parsed, newtally, True )
                                 else let cols =  distinct_columns_accessed $ get_all_idens _1
                                      in (groom _1, stats_updated_parsed
                                          { stats_simple = stats_simple + 1
-                                         , stats_column_histogram = incr stats_column_histogram cols } )
+                                         , stats_column_histogram = incr stats_column_histogram cols }, newtally , True)
                       in (putStrLn (show query)
                           >> putStrLn ""
                           >> putStrLn msg
-                          >> putStrLn (groom stats)
+                          >> putStrLn (groom newstats)
+                          >> (if success then display_cluster_tally newtally else putStrLn "")
+                          >> putStrLn ("number of unique queries: " ++ show (HashMap.size newtally))
                           >> putStrLn "---------"
-                          >> mainloop filename handle newstats)
+                          >> mainloop filename handle newstats newtally)
                     )
                )
   )
@@ -126,45 +125,56 @@ get_iden_list foo =
 distinct_columns_accessed :: [String] -> Int
 distinct_columns_accessed lst  = (Set.fromList lst) |> Set.size
 
-{- clusters queries by those that have the same shape, ie, equal except bc of
-literal constants in them.
+replace_minus_int :: String -> String
+replace_minus_int s = case s of
+  [] -> []
+  '-' : ' ' : '{' : '}' : rest -> '{' : '}' : replace_minus_int rest
+  c : rest -> c : replace_minus_int rest
 
-These probably match templates used by the client code
--}
-get_canonical_query_sexpr :: Sexp -> Sexp
-get_canonical_query_sexpr s@(List [Atom packed, _])
+get_canonical_query_sexpr s@(List [Atom packed, second]) =
   if elem (S8.unpack packed) ["NumLit", "StringLit", "IntervalLit", "TypedLit"]
   then let mb = fromSexp s::Maybe ScalarExpr  in
-    (mb |> fromJust |> get_canonical_literal |> toSexp)
+    (mb |> Maybe.fromJust |> get_canonical_literal |> toSexp)
   else List [Atom packed, get_canonical_query_sexpr second]
-
-get_canonical_literal :: ScalarExpr  -> ScalarExpr
-get_canonical_literal s = case s of
-  NumLit _ -> NumLit "canonicalNumLit"
-  StringLit _ _ _ -> StringLit "'" "'" "canonicalStringLit"
-  IntervalLit { ilLiteral } ->
-    IntervalLit { ilSign=Nothing
-                , ilLiteral=ilLiteral
-                , ilFrom=(Itf "canonicalIntervalLitFrom" Nothing)
-                , ilTo=Nothing}
-  TypedLit tn _ -> TypedLit tn "canonicalTypedLit"
-
-
 get_canonical_query_sexpr s@(Atom x) = s
 get_canonical_query_sexpr (List lst) =
   List (map get_canonical_query_sexpr lst)
 
+get_canonical_literal :: ScalarExpr  -> ScalarExpr
+get_canonical_literal s =
+  let _1 = "{}" in
+  case s of
+    NumLit _ -> NumLit _1
+    StringLit _ _ _ -> StringLit "'" "'" _1
+    IntervalLit { ilLiteral } ->
+      IntervalLit { ilSign=Nothing
+                  , ilLiteral=ilLiteral
+                  , ilFrom=(Itf _1 Nothing)
+                  , ilTo=Nothing}
+    TypedLit tn _ -> TypedLit tn _1
+
+
+remove_neg_lits :: ScalarExpr -> ScalarExpr
+remove_neg_lits (PrefixOp [Name Nothing "-"] (NumLit _1)) = NumLit ("-" ++ _1)
+
+normalize_query :: QueryExpr -> S8.ByteString
+normalize_query q =
+  q |> toSexp |> get_canonical_query_sexpr
+  |> (fromSexp :: Sexp -> Maybe QueryExpr) |> Maybe.fromJust |> prettyMySQLQuery
+  {-|> replace "- {}" "{}"-} --having issues instaling this library
+  |> replace_minus_int
+  |> S8.pack
+
 merge_into_count :: HashMap.Map S.ByteString Int ->  QueryExpr -> HashMap.Map S.ByteString Int
-merge_into_count map query =
-  let stringform = toSexp query |> get_canonical_query_sexpr |> printMach  in
-  HashMap.insertWith (+) stringform 1 map
+merge_into_count map query = HashMap.insertWith (+) (normalize_query query) 1 map
 
 display_cluster_tally :: HashMap.Map S.ByteString Int -> IO ()
 display_cluster_tally m = {-note, it should be a one element list after parsing back -}
-  let deser_query m = m |> parseExn |> head |> (fromSexp :: Sexp -> Maybe QueryExpr)
-        |> Maybe.fromJust |> prettyMySQLQuery in
-  m |> HashMap.toList |> map (\(x,y) -> (deser_query x, y))
-  |> List.sortBy (\x y -> compare (snd x)  (snd y)) |> groom |> putStrLn
+  m
+  |> HashMap.toList
+  |> List.sortBy (\x y -> compare (snd x)  (snd y))
+  |> map (\(x, y) -> putStr (S8.unpack x) >> putStr " -> " >> putStrLn (show y) >> putStrLn "---")
+  |> sequence_
 
 {-
 note:
