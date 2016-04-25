@@ -79,7 +79,7 @@ mainloop filename handle stats@(Stats { stats_total
                                          , stats_column_histogram = incr stats_column_histogram cols }, newtally , True)
                       in (putStrLn (show query)
                           >> putStrLn ""
-                          >> putStrLn msg
+                          >> (if success then putStrLn "Success." else putStrLn msg)
                           >> putStrLn (groom newstats)
                           >> (if success && (stats_parsed +1) `mod` 10000 == 0 then display_cluster_tally newtally else putStrLn "")
                           >> putStrLn "---------"
