@@ -65,7 +65,8 @@ mainloop filename handle stats@(Stats { stats_total
               >> display_cluster_tally query_tally
          else  (hGetLine handle
                 >>= (\query_raw ->
-                      let query = replace_any_tweet_tokens query_raw in {- hack to correct some of the twitter queries -}
+                      let query = replace_any_tweet_tokens query_raw in
+                      {- hack to correct some of the twitter queries -}
                       let (msg, num_cols, newstats, newtally, success) =
                             let stats_updated_count =  stats { stats_total = stats_total + 1}
                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
@@ -84,9 +85,13 @@ mainloop filename handle stats@(Stats { stats_total
                                          { stats_simple = stats_simple + 1}, newtally , True)
                       in (putStrLn (show query)
                           >> putStrLn ""
-                          >> (if success then putStrLn ("Success. cols in query = " ++ show num_cols) else putStrLn msg)
+                          >> (if success
+                              then putStrLn ("Success. cols in query = " ++ show num_cols)
+                              else putStrLn msg)
                           >> putStrLn (groom newstats)
-                          >> (if success && (stats_parsed +1) `mod` 10000 == 0 then display_cluster_tally newtally else putStrLn "")
+                          >> (if success && (stats_parsed +1) `mod` 10000 == 0
+                              then display_cluster_tally newtally
+                              else putStrLn "")
                           >> putStrLn "---------"
                           >> mainloop filename handle newstats newtally)
                     )
