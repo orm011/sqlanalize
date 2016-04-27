@@ -1,0 +1,16 @@
+SELECT 10 FROM contributions WHERE amount=5 limit 5;
+SELECT 1+1 from contributions;
+SELECT 1+1 from contributions limit 10;
+SELECT '1' as key0,COUNT(*) AS val FROM tweets_nov_feb WHERE (goog_x >= -9018249.307606274 AND goog_x < 9018249.307606382) AND (goog_y >= -12298443.331346864 AND goog_y < 12298443.331333507) AND (lang = 'pt') AND (tweet_time >= TIMESTAMP(0) '2014-11-01 00:02:36' AND tweet_time < TIMESTAMP(0) '2015-02-28 23:59:59') GROUP BY key0 ORDER BY key0;
+SELECT 1 as key0,COUNT(*) AS val FROM tweets_nov_feb WHERE (goog_x >= -9018249.307606274 AND goog_x < 9018249.307606382) AND (goog_y >= -12298443.331346864 AND goog_y < 12298443.331333507) AND (lang = 'pt') AND (tweet_time >= TIMESTAMP(0) '2014-11-01 00:02:36' AND tweet_time < TIMESTAMP(0) '2015-02-28 23:59:59') GROUP BY key0 ORDER BY key0;
+SELECT 2 + 2 FROM contributions WHERE amount=5;
+SELECT admin1 as key0,  AVG(CASE WHEN ('12s' = ANY tweet_tokens) THEN 1 ELSE 0 END) AS val FROM tweets_nov_feb WHERE country = 'US' AND ((tweet_time >= TIMESTAMP(0) '2014-11-01 00:02:36' AND tweet_time < TIMESTAMP(0) '2015-02-28 23:59:59')) GROUP BY key0 ORDER BY key0;
+SELECT admin1 as key0,  AVG(CASE WHEN ('12s' = ANY tweet_tokens) THEN 1 ELSE 0 END) AS val FROM tweets_nov_feb WHERE country = 'US' AND ((tweet_time >= TIMESTAMP(0) '2014-11-01 00:02:36' AND tweet_time < TIMESTAMP(0) '2015-02-28 23:59:59')) GROUP BY key0 ORDER BY val DESC LIMIT 10;
+SELECT admin1 as key0, AVG(CASE WHEN ('#2014年もあとちょっとだからふぁぼしてくれた人に一言' = ANY tweet_tokens) THEN 1 ELSE 0 END) AS val FROM tweets_nov_feb WHERE country = 'JP' AND ((tweet_time >= TIMESTAMP(0) '2014-11-01 11:59:59' AND tweet_time < TIMESTAMP(0) '2015-02-28 23:59:59')) GROUP BY key0 ORDER BY key0;
+SELECT admin1 as key0, AVG(CASE WHEN ('#2014年もあとちょっとだからふぁぼしてくれた人に一言' = ANY tweet_tokens) THEN 1 ELSE 0 END) AS val FROM tweets_nov_feb WHERE country = 'JP' AND ((tweet_time >= TIMESTAMP(0) '2014-11-01 11:59:59' AND tweet_time < TIMESTAMP(0) '2015-02-28 23:59:59')) GROUP BY key0 ORDER BY val DESC LIMIT 10;
+SELECT contributions.merc_x as x,contributions.merc_y as y,contributions.recipient_party as color,contributions.amount as size,contributions.rowid FROM contributions WHERE (contributions.merc_x >= -13043142.590201482 AND contributions.merc_x < -7766842.190555595) AND (contributions.merc_y >= 4025145.883946478 AND contributions.merc_y < 5296187.4368016785) AND amount > 0 and amount <= 5000 and recipient_type = 'P' AND  MOD(contributions.rowid * 265445761, 4294967296) < 278881702 LIMIT 500000;
+SELECT admin1 as key0 FROM tweets_nov_feb WHERE country = 'JP' AND ((tweet_time >= TIMESTAMP(0) '2014-11-01 11:59:59' AND tweet_time < TIMESTAMP '2015-02-28 23:59:59'));
+select CASE WHEN (col = 1) THEN 1 ELSE 0 END from foo;
+select CASE WHEN ('1' = ANY (tweet_tokens)) THEN 1 ELSE 0 END from foo;
+select CASE WHEN ('1' = ANY tweet_tokens) THEN 1 ELSE 0 END from foo;
+SELECT UNNEST(hashtags) as key0,COUNT(*) AS val FROM tweets_nov_feb WHERE (goog_x >= -11621918.107040405 AND goog_x < 12949644.679974686) AND (goog_y >= 466760.02026295185 AND goog_y < 8646732.950642653) GROUP BY key0 ORDER BY val DESC LIMIT 223;
