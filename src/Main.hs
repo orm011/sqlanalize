@@ -15,7 +15,6 @@ import qualified Data.Set as Set
 import System.IO
 import Data.Sexp
 import GHC.Generics
-import Data.String.Conversions
 import Language.Sexp
 import qualified Data.ByteString.Lazy.Char8 as S8
 import qualified Data.ByteString.Lazy as S
