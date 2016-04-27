@@ -16,6 +16,7 @@ import System.IO
 import Data.Sexp
 import GHC.Generics
 import Language.Sexp
+import Data.String.Utils
 import qualified Data.ByteString.Lazy.Char8 as S8
 import qualified Data.ByteString.Lazy as S
 
@@ -37,6 +38,9 @@ data Stats = Stats
   , stats_column_histogram::Map.Map Int Int
   } deriving (Show)
 
+
+replace_any_tweet_tokens :: String -> String
+replace_any_tweet_tokens str = replace "ANY tweet_tokens" "ANY (tweet_tokens)" str
 
 initial_stats = Stats
   { stats_total = 0
@@ -60,7 +64,8 @@ mainloop filename handle stats@(Stats { stats_total
                         " / " ++ show stats_total )
               >> display_cluster_tally query_tally
          else  (hGetLine handle
-                >>= (\query ->
+                >>= (\query_raw ->
+                      let query = replace_any_tweet_tokens query in {- hack to correct some of the twitter queries -}
                       let (msg, num_cols, newstats, newtally, success) =
                             let stats_updated_count =  stats { stats_total = stats_total + 1}
                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
@@ -92,7 +97,7 @@ officialDialect =  Dialect {diSyntaxFlavour=MySQL, allowOdbc=True }
 parseMySQLQuery = parseQueryExpr officialDialect
 prettyMySQLQuery = prettyQueryExpr officialDialect
 
-justParse str = case parseMySQLQuery "" Nothing str of
+justParse str = case replace_any_tweet_tokens str |> parseMySQLQuery "" Nothing  of
   Right _1 -> _1
 
 prettyParseErr file lineno query =
