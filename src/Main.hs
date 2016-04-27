@@ -65,7 +65,7 @@ mainloop filename handle stats@(Stats { stats_total
               >> display_cluster_tally query_tally
          else  (hGetLine handle
                 >>= (\query_raw ->
-                      let query = replace_any_tweet_tokens query in {- hack to correct some of the twitter queries -}
+                      let query = replace_any_tweet_tokens query_raw in {- hack to correct some of the twitter queries -}
                       let (msg, num_cols, newstats, newtally, success) =
                             let stats_updated_count =  stats { stats_total = stats_total + 1}
                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
