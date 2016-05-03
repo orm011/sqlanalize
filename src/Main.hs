@@ -19,6 +19,7 @@ import Language.Sexp
 import Data.String.Utils
 import qualified Data.ByteString.Lazy.Char8 as S8
 import qualified Data.ByteString.Lazy as S
+import Control.Parallel.Strategies
 
 (|>) :: a -> (a -> b) -> b
 (|>) f g = g f
@@ -26,12 +27,13 @@ import qualified Data.ByteString.Lazy as S
 main :: IO ()
 main = do a <- getArgs
           case a of
-            [filename] -> do contents <- readFile filename
-                             let raw_queries = lines contents
-                             let results = mainfun raw_queries
-                             putStrLn (groom results { stats_tally = HashMap.empty })
-                             display_cluster_tally (stats_tally results)
-                             putStrLn (groom results { stats_tally = HashMap.empty })
+            [filename] ->
+              do contents <- readFile filename
+                 let raw_queries = lines contents
+                 let results = mainfun raw_queries
+                 putStrLn (groom results { stats_tally = HashMap.empty })
+                 display_cluster_tally (stats_tally results)
+                 putStrLn (groom results { stats_tally = HashMap.empty })
             _ -> error "we need an input file name"
 
 type Tally = HashMap.Map QueryExpr Int
@@ -72,7 +74,7 @@ merge_query s@Stats{ stats_total, stats_tally } (Right bs) =
 
 mainfun :: [String] -> Stats
 mainfun queries =
-  let processed = map process_query queries in
+  let processed = parMap rpar process_query queries in
   foldl merge_query initial_stats processed
 
 -- mainloop :: String -> Handle -> Stats -> HashMap.Map S.ByteString Int -> IO ()
