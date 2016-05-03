@@ -179,6 +179,7 @@ get_canonical_literal :: ScalarExpr  -> ScalarExpr
 get_canonical_literal s =
   let _1 = "{}" in
   case s of
+    PrefixOp [Name Nothing "-"] (NumLit _) -> NumLit "0" {-special case to deal with negative nums-}
     NumLit _ -> NumLit "0"
     StringLit _ _ _ -> StringLit "'" "'" _1
     IntervalLit { ilLiteral } ->
