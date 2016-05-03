@@ -166,8 +166,11 @@ get_iden_list foo =
 distinct_columns_accessed :: [String] -> Int
 distinct_columns_accessed lst  = (Set.fromList lst) |> Set.size
 
+{- get_canonical_query_sexpr  {-special case to deal with negative nums-}s@(List [Atom packed, second]) =-}
+
 get_canonical_query_sexpr s@(List [Atom packed, second]) =
-  if elem (S8.unpack packed) ["NumLit", "StringLit", "IntervalLit", "TypedLit"]
+  if elem (S8.unpack packed) ["NumLit", "StringLit", "IntervalLit", "TypedLit"
+                             , {-special case-} "PrefixOp"]
   then let mb = fromSexp s::Maybe ScalarExpr  in
     (mb |> Maybe.fromJust |> get_canonical_literal |> toSexp)
   else List [Atom packed, get_canonical_query_sexpr second]
@@ -175,11 +178,15 @@ get_canonical_query_sexpr s@(Atom x) = s
 get_canonical_query_sexpr (List lst) =
   List (map get_canonical_query_sexpr lst)
 
+{- also needs to deal with prefix op -}
 get_canonical_literal :: ScalarExpr  -> ScalarExpr
 get_canonical_literal s =
   let _1 = "{}" in
   case s of
-    PrefixOp [Name Nothing "-"] (NumLit _) -> NumLit "0" {-special case to deal with negative nums-}
+    PrefixOp _ (NumLit _) -> NumLit "0" {- deal with annoying case of e.g -1 -}
+    PrefixOp x inner -> let tmp = get_canonical_query_sexpr (toSexp inner)
+                            inner' = Maybe.fromJust $ ((fromSexp tmp) :: Maybe ScalarExpr)
+                        in PrefixOp x inner'
     NumLit _ -> NumLit "0"
     StringLit _ _ _ -> StringLit "'" "'" _1
     IntervalLit { ilLiteral } ->
