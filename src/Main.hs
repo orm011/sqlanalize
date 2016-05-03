@@ -34,7 +34,7 @@ main = do a <- getArgs
                              putStrLn (groom results { stats_tally = HashMap.empty })
             _ -> error "we need an input file name"
 
-type Tally = HashMap.Map S.ByteString Int
+type Tally = HashMap.Map QueryExpr Int
 
 data Stats = Stats
   { stats_total::Int
@@ -42,7 +42,7 @@ data Stats = Stats
   , stats_tally::Tally
   } deriving (Show)
 
-process_query :: String -> Either ParseError S.ByteString
+process_query :: String -> Either ParseError QueryExpr
 process_query query_raw  =
   let query = replace_any_tweet_tokens query_raw in
   {- hack to correct some of the twitter queries -}
@@ -61,7 +61,7 @@ initial_stats = Stats
 
 incr hist cols =  Map.insertWith (+) cols 1 hist
 
-merge_query :: Stats -> Either ParseError S.ByteString -> Stats
+merge_query :: Stats -> Either ParseError QueryExpr  -> Stats
 merge_query s@Stats{ stats_total, stats_error } (Left _) =
   s {stats_total=stats_total+1
     ,stats_error=stats_error+1 }
@@ -192,32 +192,18 @@ get_canonical_literal s =
 remove_neg_lits :: ScalarExpr -> ScalarExpr
 remove_neg_lits (PrefixOp [Name Nothing "-"] (NumLit _1)) = NumLit ("-" ++ _1)
 
-normalize_query :: QueryExpr -> S8.ByteString
+normalize_query :: QueryExpr -> QueryExpr
 normalize_query q =
   q |> toSexp |> get_canonical_query_sexpr
-  |> (fromSexp :: Sexp -> Maybe QueryExpr) |> Maybe.fromJust |> prettyMySQLQuery
-  |> replace "- 0" "0"
-  |> replace "\n" " "
-  |> replace "\t" " "
-  |> replace "  " " "
-  |> replace "  " " "
-  |> replace "  " " "
-  |> replace "  " " "
-  |> S8.pack
-
-merge_into_count :: HashMap.Map S.ByteString Int ->  QueryExpr -> HashMap.Map S.ByteString Int
-merge_into_count map query = HashMap.insertWith (+) (normalize_query query) 1 map
+  |> (fromSexp :: Sexp -> Maybe QueryExpr) |> Maybe.fromJust
 
 display_cluster_tally :: Tally -> IO ()
 display_cluster_tally m = {-note, it should be a one element list after parsing back -}
   (m
   |> HashMap.toList
   |> List.sortBy (\x y -> compare (snd x)  (snd y))
-  |> map (\(x,y) -> let cols = case parseMySQLQuery "" Nothing (S8.unpack x) of
-                                Left _ -> -1 {- wansn't able to parse back -}
-                                Right q -> get_all_idens q |> distinct_columns_accessed
-                    in (x, y, cols))
-  |> map (\(x, y, cols) -> putStrLn (S8.unpack x) >> putStrLn (" -> count: " ++ (show y) ++ " cols: " ++ (show cols)) >> putStrLn "---")
+  |> map (\(x,y) -> (x, y, get_all_idens x |> distinct_columns_accessed))
+  |> map (\(x, y, cols) -> putStrLn (prettyMySQLQuery x) >> putStrLn (" -> count: " ++ (show y) ++ " cols: " ++ (show cols)) >> putStrLn "---")
   |> sequence_)
   >> putStrLn ("number of unique queries: " ++ show (HashMap.size m))
 
