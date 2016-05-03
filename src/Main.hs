@@ -20,6 +20,7 @@ import Data.String.Utils
 import qualified Data.ByteString.Lazy.Char8 as S8
 import qualified Data.ByteString.Lazy as S
 import Control.Parallel.Strategies
+import Control.DeepSeq (force)
 
 (|>) :: a -> (a -> b) -> b
 (|>) f g = g f
@@ -74,7 +75,7 @@ merge_query s@Stats{ stats_total, stats_tally } (Right bs) =
 
 mainfun :: [String] -> Stats
 mainfun queries =
-  let processed = parMap rpar process_query queries in
+  let processed = parMap rpar (force . process_query) queries in
   foldl merge_query initial_stats processed
 
 officialDialect =  Dialect {diSyntaxFlavour=MySQL, allowOdbc=True }
