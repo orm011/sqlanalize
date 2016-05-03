@@ -77,53 +77,6 @@ mainfun queries =
   let processed = parMap rpar process_query queries in
   foldl merge_query initial_stats processed
 
--- mainloop :: String -> Handle -> Stats -> HashMap.Map S.ByteString Int -> IO ()
--- mainloop filename handle stats@(Stats { stats_total
---                                       , stats_parsed
---                                       , stats_simple
---                                       , stats_column_histogram
---                                       }) query_tally  =
---   hIsEOF handle >>=
---   (\iseof -> if iseof
---          then putStrLn ("parse errors / total queries  = " ++
---                         show (stats_total - stats_parsed)  ++
---                         " / " ++ show stats_total )
---               >> display_cluster_tally query_tally
---          else  (hGetLine handle
---                 >>= (\query_raw ->
---                       let query = replace_any_tweet_tokens query_raw in
---                       {- hack to correct some of the twitter queries -}
---                       let (msg, num_cols, newstats, newtally, success) =
---                             let stats_updated_count =  stats { stats_total = stats_total + 1}
---                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
---                               Left ParseError { peFormattedError }
---                                 -> (peFormattedError, 0, stats_updated_count, query_tally, False )
---                               Right _1
---                                 -> let   cols =  distinct_columns_accessed $ get_all_idens _1
---                                          stats_updated_parsed =
---                                            stats_updated_count
---                                            { stats_parsed = stats_parsed+1
---                                            , stats_column_histogram = incr stats_column_histogram cols}
---                                          newtally  = merge_into_count query_tally _1 in
---                                    if not (is_simple_scan _1)
---                                    then (groom _1, cols, stats_updated_parsed, newtally, True )
---                                    else (groom _1, cols, stats_updated_parsed
---                                          { stats_simple = stats_simple + 1}, newtally , True)
---                       in (putStrLn (show query)
---                           >> putStrLn ""
---                           >> (if success
---                               then putStrLn ("Success. cols in query = " ++ show num_cols)
---                               else putStrLn msg)
---                           >> putStrLn (groom newstats)
---                           >> (if success && (stats_parsed +1) `mod` 10000 == 0
---                               then display_cluster_tally newtally
---                               else putStrLn "")
---                           >> putStrLn "---------"
---                           >> mainloop filename handle newstats newtally)
---                     )
---                )
---   )
-
 officialDialect =  Dialect {diSyntaxFlavour=MySQL, allowOdbc=True }
 parseMySQLQuery = parseQueryExpr officialDialect
 prettyMySQLQuery = prettyQueryExpr officialDialect
