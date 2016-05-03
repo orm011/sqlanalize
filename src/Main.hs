@@ -26,77 +26,101 @@ import qualified Data.ByteString.Lazy as S
 main :: IO ()
 main = do a <- getArgs
           case a of
-            [filename] -> do handle <- openFile filename ReadMode
-                             mainloop filename handle initial_stats HashMap.empty
-                             hClose handle
+            [filename] -> do contents <- readFile filename
+                             let raw_queries = lines contents
+                             let results = mainfun raw_queries
+                             putStrLn (groom results { stats_tally = HashMap.empty })
+                             display_cluster_tally (stats_tally results)
+                             putStrLn (groom results { stats_tally = HashMap.empty })
             _ -> error "we need an input file name"
+
+type Tally = HashMap.Map S.ByteString Int
 
 data Stats = Stats
   { stats_total::Int
-  , stats_parsed::Int
-  , stats_simple::Int
-  , stats_column_histogram::Map.Map Int Int
+  , stats_error::Int
+  , stats_tally::Tally
   } deriving (Show)
 
+process_query :: String -> Either ParseError S.ByteString
+process_query query_raw  =
+  let query = replace_any_tweet_tokens query_raw in
+  {- hack to correct some of the twitter queries -}
+  case parseMySQLQuery "" Nothing query of
+    Left _1 -> Left _1
+    Right _1 -> Right $ normalize_query _1
 
 replace_any_tweet_tokens :: String -> String
 replace_any_tweet_tokens str = replace "ANY tweet_tokens" "ANY (tweet_tokens)" str
 
 initial_stats = Stats
   { stats_total = 0
-  , stats_parsed = 0
-  , stats_simple = 0
-  , stats_column_histogram = Map.empty
+  , stats_error = 0
+  , stats_tally = HashMap.empty
   }
 
 incr hist cols =  Map.insertWith (+) cols 1 hist
 
-mainloop :: String -> Handle -> Stats -> HashMap.Map S.ByteString Int -> IO ()
-mainloop filename handle stats@(Stats { stats_total
-                                      , stats_parsed
-                                      , stats_simple
-                                      , stats_column_histogram
-                                      }) query_tally  =
-  hIsEOF handle >>=
-  (\iseof -> if iseof
-         then putStrLn ("parse errors / total queries  = " ++
-                        show (stats_total - stats_parsed)  ++
-                        " / " ++ show stats_total )
-              >> display_cluster_tally query_tally
-         else  (hGetLine handle
-                >>= (\query_raw ->
-                      let query = replace_any_tweet_tokens query_raw in
-                      {- hack to correct some of the twitter queries -}
-                      let (msg, num_cols, newstats, newtally, success) =
-                            let stats_updated_count =  stats { stats_total = stats_total + 1}
-                            in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
-                              Left ParseError { peFormattedError }
-                                -> (peFormattedError, 0, stats_updated_count, query_tally, False )
-                              Right _1
-                                -> let   cols =  distinct_columns_accessed $ get_all_idens _1
-                                         stats_updated_parsed =
-                                           stats_updated_count
-                                           { stats_parsed = stats_parsed+1
-                                           , stats_column_histogram = incr stats_column_histogram cols}
-                                         newtally  = merge_into_count query_tally _1 in
-                                   if not (is_simple_scan _1)
-                                   then (groom _1, cols, stats_updated_parsed, newtally, True )
-                                   else (groom _1, cols, stats_updated_parsed
-                                         { stats_simple = stats_simple + 1}, newtally , True)
-                      in (putStrLn (show query)
-                          >> putStrLn ""
-                          >> (if success
-                              then putStrLn ("Success. cols in query = " ++ show num_cols)
-                              else putStrLn msg)
-                          >> putStrLn (groom newstats)
-                          >> (if success && (stats_parsed +1) `mod` 10000 == 0
-                              then display_cluster_tally newtally
-                              else putStrLn "")
-                          >> putStrLn "---------"
-                          >> mainloop filename handle newstats newtally)
-                    )
-               )
-  )
+merge_query :: Stats -> Either ParseError S.ByteString -> Stats
+merge_query s@Stats{ stats_total, stats_error } (Left _) =
+  s {stats_total=stats_total+1
+    ,stats_error=stats_error+1 }
+
+merge_query s@Stats{ stats_total, stats_tally } (Right bs) =
+  s {stats_total=stats_total+1
+    ,stats_tally = HashMap.insertWith (+) bs 1 stats_tally}
+
+mainfun :: [String] -> Stats
+mainfun queries =
+  let processed = map process_query queries in
+  foldl merge_query initial_stats processed
+
+-- mainloop :: String -> Handle -> Stats -> HashMap.Map S.ByteString Int -> IO ()
+-- mainloop filename handle stats@(Stats { stats_total
+--                                       , stats_parsed
+--                                       , stats_simple
+--                                       , stats_column_histogram
+--                                       }) query_tally  =
+--   hIsEOF handle >>=
+--   (\iseof -> if iseof
+--          then putStrLn ("parse errors / total queries  = " ++
+--                         show (stats_total - stats_parsed)  ++
+--                         " / " ++ show stats_total )
+--               >> display_cluster_tally query_tally
+--          else  (hGetLine handle
+--                 >>= (\query_raw ->
+--                       let query = replace_any_tweet_tokens query_raw in
+--                       {- hack to correct some of the twitter queries -}
+--                       let (msg, num_cols, newstats, newtally, success) =
+--                             let stats_updated_count =  stats { stats_total = stats_total + 1}
+--                             in case parseMySQLQuery filename (Just (stats_total + 1, 0)) query of
+--                               Left ParseError { peFormattedError }
+--                                 -> (peFormattedError, 0, stats_updated_count, query_tally, False )
+--                               Right _1
+--                                 -> let   cols =  distinct_columns_accessed $ get_all_idens _1
+--                                          stats_updated_parsed =
+--                                            stats_updated_count
+--                                            { stats_parsed = stats_parsed+1
+--                                            , stats_column_histogram = incr stats_column_histogram cols}
+--                                          newtally  = merge_into_count query_tally _1 in
+--                                    if not (is_simple_scan _1)
+--                                    then (groom _1, cols, stats_updated_parsed, newtally, True )
+--                                    else (groom _1, cols, stats_updated_parsed
+--                                          { stats_simple = stats_simple + 1}, newtally , True)
+--                       in (putStrLn (show query)
+--                           >> putStrLn ""
+--                           >> (if success
+--                               then putStrLn ("Success. cols in query = " ++ show num_cols)
+--                               else putStrLn msg)
+--                           >> putStrLn (groom newstats)
+--                           >> (if success && (stats_parsed +1) `mod` 10000 == 0
+--                               then display_cluster_tally newtally
+--                               else putStrLn "")
+--                           >> putStrLn "---------"
+--                           >> mainloop filename handle newstats newtally)
+--                     )
+--                )
+--   )
 
 officialDialect =  Dialect {diSyntaxFlavour=MySQL, allowOdbc=True }
 parseMySQLQuery = parseQueryExpr officialDialect
@@ -142,12 +166,6 @@ get_iden_list foo =
 distinct_columns_accessed :: [String] -> Int
 distinct_columns_accessed lst  = (Set.fromList lst) |> Set.size
 
-replace_minus_int :: String -> String
-replace_minus_int s = case s of
-  [] -> []
-  '-' : ' ' : '{' : '}' : rest -> '{' : '}' : replace_minus_int rest
-  c : rest -> c : replace_minus_int rest
-
 get_canonical_query_sexpr s@(List [Atom packed, second]) =
   if elem (S8.unpack packed) ["NumLit", "StringLit", "IntervalLit", "TypedLit"]
   then let mb = fromSexp s::Maybe ScalarExpr  in
@@ -161,7 +179,7 @@ get_canonical_literal :: ScalarExpr  -> ScalarExpr
 get_canonical_literal s =
   let _1 = "{}" in
   case s of
-    NumLit _ -> NumLit _1
+    NumLit _ -> NumLit "0"
     StringLit _ _ _ -> StringLit "'" "'" _1
     IntervalLit { ilLiteral } ->
       IntervalLit { ilSign=Nothing
@@ -178,19 +196,28 @@ normalize_query :: QueryExpr -> S8.ByteString
 normalize_query q =
   q |> toSexp |> get_canonical_query_sexpr
   |> (fromSexp :: Sexp -> Maybe QueryExpr) |> Maybe.fromJust |> prettyMySQLQuery
-  {-|> replace "- {}" "{}"-} --having issues instaling this library
-  |> replace_minus_int
+  |> replace "- 0" "0"
+  |> replace "\n" " "
+  |> replace "\t" " "
+  |> replace "  " " "
+  |> replace "  " " "
+  |> replace "  " " "
+  |> replace "  " " "
   |> S8.pack
 
 merge_into_count :: HashMap.Map S.ByteString Int ->  QueryExpr -> HashMap.Map S.ByteString Int
 merge_into_count map query = HashMap.insertWith (+) (normalize_query query) 1 map
 
-display_cluster_tally :: HashMap.Map S.ByteString Int -> IO ()
+display_cluster_tally :: Tally -> IO ()
 display_cluster_tally m = {-note, it should be a one element list after parsing back -}
   (m
   |> HashMap.toList
   |> List.sortBy (\x y -> compare (snd x)  (snd y))
-  |> map (\(x, y) -> putStr (S8.unpack x) >> putStr " -> " >> putStrLn (show y) >> putStrLn "---")
+  |> map (\(x,y) -> let cols = case parseMySQLQuery "" Nothing (S8.unpack x) of
+                                Left _ -> -1 {- wansn't able to parse back -}
+                                Right q -> get_all_idens q |> distinct_columns_accessed
+                    in (x, y, cols))
+  |> map (\(x, y, cols) -> putStrLn (S8.unpack x) >> putStrLn (" -> count: " ++ (show y) ++ " cols: " ++ (show cols)) >> putStrLn "---")
   |> sequence_)
   >> putStrLn ("number of unique queries: " ++ show (HashMap.size m))
 
