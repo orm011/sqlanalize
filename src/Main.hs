@@ -45,6 +45,8 @@ data Stats = Stats
   , stats_tally::Tally
   } deriving (Show)
 
+instance NFData Stats
+
 process_query :: String -> Either ParseError QueryExpr
 process_query query_raw  =
   let query = replace_any_tweet_tokens query_raw in
@@ -73,10 +75,23 @@ merge_query s@Stats{ stats_total, stats_tally } (Right bs) =
   s {stats_total=stats_total+1
     ,stats_tally = HashMap.insertWith (+) bs 1 stats_tally}
 
+merge_stats l r =
+  Stats {stats_total = (stats_total l) + (stats_total r)
+        ,stats_error = (stats_error l) + (stats_error r)
+        ,stats_tally = HashMap.unionWith (+) (stats_tally l) (stats_tally r)
+        }
+
+chunk :: Int -> [a] -> [[a]]
+chunk _ []  = []
+chunk n xs = as : chunk n bs
+  where (as,bs) = splitAt n xs
+
 mainfun :: [String] -> Stats
 mainfun queries =
-  let processed = parMap rpar (force . process_query) queries in
-  foldl merge_query initial_stats processed
+  let chunks = chunk 200 queries in
+  let process_chunk q = (foldl merge_query initial_stats (map process_query q)) in 
+  let processed = withStrategy (parBuffer 40 rdeepseq) (map process_chunk chunks)  in
+  foldl merge_stats initial_stats processed
 
 officialDialect =  Dialect {diSyntaxFlavour=MySQL, allowOdbc=True }
 parseMySQLQuery = parseQueryExpr officialDialect
